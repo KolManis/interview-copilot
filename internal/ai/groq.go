@@ -3,7 +3,9 @@ package ai
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -34,10 +36,7 @@ func (g *GroqClient) TranscribeAudio(audioPath string) (string, error) {
 			Model:    "whisper-large-v3",
 			FilePath: audioPath,
 			Language: "ru",
-			// Подсказки для улучшения распознавания технических терминов
-			Prompt: "Go, Golang, Python, Java, Kotlin, Docker, Kubernetes, " +
-				"горутины, интерфейсы, каналы, микросервисы, " +
-				"собеседование, архитектура, алгоритм",
+			Prompt:   "Go, Golang, Python, Java, Docker, Kubernetes, горутины, интерфейсы, каналы, микросервисы",
 		},
 	)
 
@@ -48,7 +47,8 @@ func (g *GroqClient) TranscribeAudio(audioPath string) (string, error) {
 	return resp.Text, nil
 }
 
-func (g *GroqClient) AskQuestion(question string, history []string) (string, error) {
+// AskQuestionStream — стриминговая версия, выводит ответ по мере генерации
+func (g *GroqClient) AskQuestionStream(question string, history []string) (string, error) {
 	systemPrompt := `Ты - ассистент на техническом собеседовании.
 Давай краткие подсказки по делу.
 Отвечай на русском языке.
@@ -56,6 +56,73 @@ func (g *GroqClient) AskQuestion(question string, history []string) (string, err
 - Если вопрос про технологии: 2-3 ключевых пункта
 - Если Behavioral: структура ответа по STAR
 - Если про код: покажи решение с коротким комментарием
+Не пиши "вот ответ", сразу давай подсказку.`
+
+	messages := []openai.ChatCompletionMessage{
+		{
+			Role:    openai.ChatMessageRoleSystem,
+			Content: systemPrompt,
+		},
+	}
+
+	for _, msg := range history {
+		messages = append(messages, openai.ChatCompletionMessage{
+			Role:    openai.ChatMessageRoleAssistant,
+			Content: msg,
+		})
+	}
+
+	messages = append(messages, openai.ChatCompletionMessage{
+		Role:    openai.ChatMessageRoleUser,
+		Content: question,
+	})
+
+	// Создаем стриминговый запрос
+	stream, err := g.chat.CreateChatCompletionStream(
+		context.Background(),
+		openai.ChatCompletionRequest{
+			Model:       "llama-3.3-70b-versatile",
+			Messages:    messages,
+			Temperature: 0.7,
+			MaxTokens:   300,
+			Stream:      true,
+		},
+	)
+	if err != nil {
+		return "", fmt.Errorf("ошибка создания стрима: %v", err)
+	}
+	defer stream.Close()
+
+	// Собираем полный ответ по кусочкам
+	var fullAnswer strings.Builder
+
+	fmt.Print("\n✅ ")
+
+	for {
+		response, err := stream.Recv()
+		if err == io.EOF {
+			fmt.Println() // Перевод строки в конце
+			break
+		}
+		if err != nil {
+			return "", fmt.Errorf("ошибка чтения стрима: %v", err)
+		}
+
+		if len(response.Choices) > 0 {
+			chunk := response.Choices[0].Delta.Content
+			fmt.Print(chunk) // Печатаем кусочек сразу
+			fullAnswer.WriteString(chunk)
+		}
+	}
+
+	return fullAnswer.String(), nil
+}
+
+// Обычная версия (без стриминга) — оставим для совместимости
+func (g *GroqClient) AskQuestion(question string, history []string) (string, error) {
+	systemPrompt := `Ты - ассистент на техническом собеседовании.
+Давай краткие подсказки по делу.
+Отвечай на русском языке.
 Не пиши "вот ответ", сразу давай подсказку.`
 
 	messages := []openai.ChatCompletionMessage{

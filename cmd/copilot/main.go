@@ -44,9 +44,10 @@ func (c *Copilot) HandleVoiceInput() {
 	}
 
 	fmt.Printf("\n💬 Вы сказали: %s\n", text)
+	fmt.Print("🤔 Генерирую подсказку...")
 
-	fmt.Print("🤔 Генерирую подсказку... ")
-	answer, err := c.groq.AskQuestion(text, c.history)
+	// Стриминг!
+	answer, err := c.groq.AskQuestionStream(text, c.history)
 	if err != nil {
 		fmt.Printf("\n❌ Ошибка: %v\n", err)
 		return
@@ -54,14 +55,13 @@ func (c *Copilot) HandleVoiceInput() {
 
 	c.history = append(c.history, fmt.Sprintf("Q: %s", text))
 	c.history = append(c.history, fmt.Sprintf("A: %s", answer))
-
-	fmt.Printf("\n✅ Подсказка:\n%s\n", answer)
 }
 
 func (c *Copilot) HandleTextInput(question string) {
-	fmt.Print("🤔 Думаю... ")
+	fmt.Print("🤔 Думаю...")
 
-	answer, err := c.groq.AskQuestion(question, c.history)
+	// Тоже стриминг!
+	answer, err := c.groq.AskQuestionStream(question, c.history)
 	if err != nil {
 		fmt.Printf("\n❌ Ошибка: %v\n", err)
 		return
@@ -69,15 +69,13 @@ func (c *Copilot) HandleTextInput(question string) {
 
 	c.history = append(c.history, fmt.Sprintf("Q: %s", question))
 	c.history = append(c.history, fmt.Sprintf("A: %s", answer))
-
-	fmt.Printf("\n✅ Подсказка:\n%s\n", answer)
 }
 
 func main() {
 	copilot := NewCopilot()
 	scanner := bufio.NewScanner(os.Stdin)
 
-	fmt.Println("🎤 AI Собеседовательный Копайлот (Groq)")
+	fmt.Println("🎤 AI Собеседовательный Копайлот (Groq + Streaming)")
 	fmt.Println(strings.Repeat("=", 50))
 	fmt.Println("Команды:")
 	fmt.Println("  /listen     - голосовой вопрос (5 сек запись)")
