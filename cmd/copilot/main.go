@@ -2,92 +2,89 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/KolManis/interview-copilot/internal/ai"
+	"github.com/KolManis/interview-copilot/internal/audio"
 	"github.com/joho/godotenv"
-	openai "github.com/sashabaranov/go-openai"
 )
 
-// еще модели
-// "mixtral-8x7b-32768"
-// "gemma2-9b-it"
-
 type Copilot struct {
-	client  *openai.Client
-	context []string
-	model   string
+	groq     *ai.GroqClient
+	recorder *audio.Recorder
+	history  []string
 }
 
 func NewCopilot() *Copilot {
 	godotenv.Load()
 	apiKey := os.Getenv("GROQ_API_KEY")
 
-	config := openai.DefaultConfig(apiKey)
-	config.BaseURL = "https://api.groq.com/openai/v1"
-	client := openai.NewClientWithConfig(config)
-
 	return &Copilot{
-		client:  client,
-		context: []string{},
-		model:   "llama-3.3-70b-versatile",
+		groq:     ai.NewGroqClient(apiKey),
+		recorder: audio.NewRecorder(),
+		history:  []string{},
 	}
 }
 
-func (c *Copilot) AskForHelp(question string) string {
-	c.context = append(c.context, fmt.Sprintf("Вопрос: %s", question))
-
-	systemPrompt := `Ты - ассистент на техническом собеседовании.
-Давай краткие подсказки по делу.
-Отвечай на русском языке, даже если вопрос на английском.
-Структура ответа:
-- Если вопрос про технологии: 2-3 ключевых пункта
-- Если Behavioral: структура ответа по STAR
-- Если про код: покажи решение с коротким комментарием
-Не пиши "вот ответ", сразу давай подсказку.`
-
-	resp, err := c.client.CreateChatCompletion(
-		context.Background(),
-		openai.ChatCompletionRequest{
-			Model: c.model,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleSystem,
-					Content: systemPrompt,
-				},
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: question,
-				},
-			},
-			Temperature: 0.7,
-			MaxTokens:   300,
-		},
-	)
-
+func (c *Copilot) HandleVoiceInput() {
+	audioFile, err := c.recorder.Record(5)
 	if err != nil {
-		return fmt.Sprintf("❌ Ошибка: %v", err)
+		fmt.Printf("❌ Ошибка записи: %v\n", err)
+		return
+	}
+	defer ai.Cleanup(audioFile)
+
+	fmt.Print("📝 Распознаю речь... ")
+	text, err := c.groq.TranscribeAudio(audioFile)
+	if err != nil {
+		fmt.Printf("\n❌ Ошибка распознавания: %v\n", err)
+		return
 	}
 
-	answer := resp.Choices[0].Message.Content
-	c.context = append(c.context, fmt.Sprintf("Ответ: %s", answer))
+	fmt.Printf("\n💬 Вы сказали: %s\n", text)
 
-	return answer
+	fmt.Print("🤔 Генерирую подсказку... ")
+	answer, err := c.groq.AskQuestion(text, c.history)
+	if err != nil {
+		fmt.Printf("\n❌ Ошибка: %v\n", err)
+		return
+	}
+
+	c.history = append(c.history, fmt.Sprintf("Q: %s", text))
+	c.history = append(c.history, fmt.Sprintf("A: %s", answer))
+
+	fmt.Printf("\n✅ Подсказка:\n%s\n", answer)
+}
+
+func (c *Copilot) HandleTextInput(question string) {
+	fmt.Print("🤔 Думаю... ")
+
+	answer, err := c.groq.AskQuestion(question, c.history)
+	if err != nil {
+		fmt.Printf("\n❌ Ошибка: %v\n", err)
+		return
+	}
+
+	c.history = append(c.history, fmt.Sprintf("Q: %s", question))
+	c.history = append(c.history, fmt.Sprintf("A: %s", answer))
+
+	fmt.Printf("\n✅ Подсказка:\n%s\n", answer)
 }
 
 func main() {
 	copilot := NewCopilot()
 	scanner := bufio.NewScanner(os.Stdin)
 
-	fmt.Println("🤖 AI Собеседовательный Копайлот (Groq)")
+	fmt.Println("🎤 AI Собеседовательный Копайлот (Groq)")
 	fmt.Println(strings.Repeat("=", 50))
 	fmt.Println("Команды:")
+	fmt.Println("  /listen     - голосовой вопрос (5 сек запись)")
 	fmt.Println("  /h          - история диалога")
 	fmt.Println("  /c          - очистить историю")
 	fmt.Println("  /quit       - выход")
-	fmt.Println("  <вопрос>    - задать вопрос")
+	fmt.Println("  <вопрос>    - текстовый вопрос")
 	fmt.Println(strings.Repeat("=", 50))
 
 	for {
@@ -103,24 +100,25 @@ func main() {
 			fmt.Println("👋 Удачи на собеседовании!")
 			return
 
+		case input == "/listen":
+			copilot.HandleVoiceInput()
+
 		case input == "/h":
-			if len(copilot.context) == 0 {
+			if len(copilot.history) == 0 {
 				fmt.Println("📝 История пуста")
 				continue
 			}
 			fmt.Println("\n📝 История диалога:")
-			for i, msg := range copilot.context {
+			for i, msg := range copilot.history {
 				fmt.Printf("%d. %s\n", i+1, msg)
 			}
 
 		case input == "/c":
-			copilot.context = []string{}
+			copilot.history = []string{}
 			fmt.Println("🧹 История очищена")
 
 		case input != "":
-			fmt.Print("🤔 ... ")
-			answer := copilot.AskForHelp(input)
-			fmt.Printf("\n%s\n", answer)
+			copilot.HandleTextInput(input)
 		}
 	}
 }
