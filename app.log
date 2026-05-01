@@ -1,0 +1,12 @@
+2026/05/01 18:14:28 main.go:52: === ПРИЛОЖЕНИЕ ЗАПУЩЕНО ===
+2026/05/01 18:14:28 main.go:60: GROQ_API_KEY загружен: gsk_CCT3...oKX5
+2026/05/01 18:14:28 main.go:183: GUI настроен, показываем окно
+2026/05/01 18:14:39 main.go:95: Пользователь отправил вопрос: Что такое горутины?
+2026/05/01 18:14:39 main.go:118: Вопрос добавлен в историю
+2026/05/01 18:14:39 main.go:190: Начинаем запрос к Groq API...
+2026/05/01 18:14:39 main.go:216: Отправляем запрос к Groq, модель: mixtral-8x7b-32768
+2026/05/01 18:14:39 main.go:227: Отправляем HTTP запрос...
+2026/05/01 18:14:40 main.go:235: Получен ответ, статус: 400
+2026/05/01 18:14:40 main.go:244: Ошибка API: статус 400, тело: {"error":{"message":"The model `mixtral-8x7b-32768` has been decommissioned and is no longer supported. Please refer to https://console.groq.com/docs/deprecations for a recommendation on which model to use instead.","type":"invalid_request_error","code":"model_decommissioned"}}
+2026/05/01 18:14:40 main.go:123: ОШИБКА при запросе к Groq: API error (status 400): {"error":{"message":"The model `mixtral-8x7b-32768` has been decommissioned and is no longer supported. Please refer to https://console.groq.com/docs/deprecations for a recommendation on which model to use instead.","type":"invalid_request_error","code":"model_decommissioned"}}
+2026/05/01 18:16:45 main.go:185: === ПРИЛОЖЕНИЕ ЗАКРЫТО ===
